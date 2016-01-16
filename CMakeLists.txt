@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8.4)
 project(PSRP_PROVIDER)
 
-add_compile_options(-Wall -Werror -fPIC)
+add_compile_options(-Wall -fPIC)
 
 set(OMI ../omi/Unix)
 
@@ -34,6 +34,7 @@ target_link_libraries(psrpomiprov pshost
 	${CMAKE_THREAD_LIBS_INIT}
 	dl
 	pam
+	iconv
 	ssl
 	crypto)
 target_include_directories(psrpomiprov PRIVATE ${OMI}/output/include ${OMI} ${OMI}/common)
