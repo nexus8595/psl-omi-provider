@@ -23,16 +23,10 @@ add_library(psrpomiprov SHARED
 	schema.c
 	xpress.c
 	BufferManipulation.c
-        coreclrutil.cpp)
+	Client.c
+	coreclrutil.cpp)
 target_link_libraries(psrpomiprov
-	miapi
-	omi_error
-	wsman
-	xmlserializer
-	protocol
-	sock
-	provmgr
-	wql
+	mi
 	base
 	pal
 	${CMAKE_THREAD_LIBS_INIT}
