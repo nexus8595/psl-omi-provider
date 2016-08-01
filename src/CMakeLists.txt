@@ -16,6 +16,12 @@ set(OMI ../omi/Unix)
 find_package(Threads REQUIRED)
 link_directories(${OMI}/output/lib)
 
+add_library(psrpclient SHARED
+	Client.c
+	xpress.c
+	BufferManipulation.c
+	schema.c)
+
 add_library(psrpomiprov SHARED
 	Shell.c
 	Command.c
@@ -23,8 +29,13 @@ add_library(psrpomiprov SHARED
 	schema.c
 	xpress.c
 	BufferManipulation.c
-	Client.c
 	coreclrutil.cpp)
+
+target_link_libraries(psrpclient
+	mi
+	${CMAKE_THREAD_LIBS_INIT}
+	)
+
 target_link_libraries(psrpomiprov
 	mi
 	base
@@ -35,8 +46,11 @@ target_link_libraries(psrpomiprov
 	ssl
 	crypto
 	${CMAKE_ICONV})
+
 target_include_directories(psrpomiprov PRIVATE ${OMI}/output/include ${OMI} ${OMI}/common)
+target_include_directories(psrpclient PRIVATE ${OMI}/output/include ${OMI} ${OMI}/common)
 target_compile_options(psrpomiprov PRIVATE -fvisibility=hidden -fno-strict-aliasing)
+target_compile_options(psrpclient PRIVATE -fvisibility=hidden -fno-strict-aliasing)
 
 add_custom_command(TARGET psrpomiprov POST_BUILD
 	COMMAND ${OMI}/output/bin/omireg $<TARGET_FILE:psrpomiprov> -n interop --hosting @requestor-shell@)
