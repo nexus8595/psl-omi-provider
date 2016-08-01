@@ -55,6 +55,12 @@ target_include_directories(psrpclient PRIVATE ${OMI}/output/include ${OMI} ${OMI
 target_compile_options(psrpomiprov PRIVATE -fvisibility=hidden -fno-strict-aliasing)
 target_compile_options(psrpclient PRIVATE -fvisibility=hidden -fno-strict-aliasing)
 
+add_custom_command(TARGET psrpclient POST_BUILD
+	COMMAND ${OMI}/output/bin/chkshlib $<TARGET_FILE:psrpclient>)
+
+add_custom_command(TARGET psrpomiprov POST_BUILD
+	COMMAND ${OMI}/output/bin/chkshlib $<TARGET_FILE:psrpomiprov>)
+
 add_custom_command(TARGET psrpomiprov POST_BUILD
 	COMMAND ${OMI}/output/bin/omireg $<TARGET_FILE:psrpomiprov> -n interop --hosting @requestor-shell@)
 #	COMMAND ${OMI}/output/bin/omireg $<TARGET_FILE:psrpomiprov> -n interop)
