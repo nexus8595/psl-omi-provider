@@ -63,7 +63,6 @@ add_custom_command(TARGET psrpomiprov POST_BUILD
 
 add_custom_command(TARGET psrpomiprov POST_BUILD
 	COMMAND ${OMI}/output/bin/omireg $<TARGET_FILE:psrpomiprov> -n interop --hosting @requestor-shell@)
-#	COMMAND ${OMI}/output/bin/omireg $<TARGET_FILE:psrpomiprov> -n interop)
 
 add_custom_target(gen DEPENDS schema.mof
 	COMMAND ${OMI}/output/bin/omigen -C ${OMI}/share/networkschema/CIM_Schema.mof schema.mof Shell Command)
