@@ -11,6 +11,7 @@
 #include <dirent.h>
 #include <dlfcn.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -18,6 +19,9 @@
 #include <iostream>
 #include <set>
 #include <cstdlib>
+#include <vector>
+#include <sstream>
+#include <algorithm>
 
 // The name of the CoreCLR native runtime DLL
 #if defined(__APPLE__)
@@ -166,6 +170,211 @@ void AddFilesFromDirectoryToTpaList(const char* directory, std::string& tpaList)
     closedir(dir);
 }
 
+struct ReleaseInfo
+{
+    std::string name;
+    int major;
+    int minor;
+    int patch;
+    std::string preReleaseIdentifier;
+    int preReleaseVersion;
+};
+
+//
+// Tokenize the directory names
+//
+bool ParseDirNames(const std::vector<std::string> &subdirs, std::vector<ReleaseInfo> &infos)
+{
+    for (std::vector<std::string>::const_iterator it=subdirs.begin(); it != subdirs.end(); ++it)
+    {
+        const std::string &name = *it;
+        ReleaseInfo info;
+        info.name = name;
+
+        size_t s1 = name.find('.');
+        if (std::string::npos == s1)
+        {
+            continue;
+        }
+        std::string majorStr = name.substr(0, s1);
+        std::istringstream iss(majorStr);
+        if ((iss >> info.major).fail())
+        {
+            continue;
+        }
+
+        size_t s2 = name.find('.', s1 + 1);
+        if (std::string::npos == s2)
+        {
+            continue;
+        }
+        std::string minorStr = name.substr(s1 + 1, s2 - s1 - 1);
+        std::istringstream iss1(minorStr);
+        if ((iss1 >> info.minor).fail())
+        {
+            continue;
+        }
+
+        size_t s3 = name.find('-', s2 + 1);
+        std::string patchStr;
+        if (std::string::npos == s3)
+        {
+            patchStr = name.substr(s2 + 1);
+        }
+        else
+        {
+            patchStr = name.substr(s2 + 1, s3 - s2 - 1);
+        }
+        std::istringstream iss2(patchStr);
+        if ((iss2 >> info.patch).fail())
+        {
+            continue;
+        }
+
+        if (std::string::npos == s3)
+        {
+            info.preReleaseIdentifier = "";
+            info.preReleaseVersion = 0;
+            infos.push_back(info);
+            continue;
+        }
+
+        size_t s4 = name.find('.', s3 + 1);
+        if (std::string::npos == s4)
+        {
+            info.preReleaseIdentifier = name.substr(s3 + 1);
+            info.preReleaseVersion = 0;
+            infos.push_back(info);
+            continue;
+        }
+        info.preReleaseIdentifier = name.substr(s3 + 1, s4 - s3 - 1);
+        std::string identifierValStr = name.substr(s4 + 1);
+        std::istringstream iss4(identifierValStr);
+        if ((iss4 >> info.preReleaseVersion).fail())
+        {
+            continue;
+        }
+
+        infos.push_back(info);
+    }
+    return !infos.empty();
+}
+
+//
+// Convert preReleaseIdentifier to an integer value
+// 
+int convertIdentifierToInt(const std::string &id)
+{
+    // "" > "rc" > "beta" > "alpha"
+        
+    if (id.empty())
+        return 4;
+
+    std::string upperString;
+
+    std::transform(id.begin(), id.end(), std::back_inserter(upperString), (int (*)(int))std::toupper);
+
+    if (upperString == "RC")
+    {
+        return 3;
+    }
+    else if (upperString == "BETA")
+    {
+        return 2;
+    }
+    else if (upperString == "ALPHA")
+    {
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+}
+
+//
+// Find newest subdir
+//
+std::string getNewestSubDir(const std::vector<ReleaseInfo> &infos)
+{
+    size_t sz = infos.size();
+    if (sz < 2)
+    {
+        return infos[0].name;
+    }
+
+    int newest = 0;
+    // assume that no version numbers will be > 1024
+    unsigned long long newestHash = ((((((((unsigned long long)infos[0].major << 10) + infos[0].minor) << 10) 
+                                        + infos[0].patch) << 10) + convertIdentifierToInt(infos[0].preReleaseIdentifier)) << 10) 
+                                        + infos[0].preReleaseVersion;
+
+    for (size_t i = 1; i < sz; ++i)
+    {
+        unsigned long long nextHash = ((((((((unsigned long long)infos[i].major << 10) + infos[i].minor) << 10) 
+                                          + infos[i].patch) << 10) + convertIdentifierToInt(infos[i].preReleaseIdentifier)) << 10) 
+                                          + infos[i].preReleaseVersion;
+        if (nextHash < newestHash)
+        {
+            continue;
+        }
+        else 
+        {
+            newest = i;
+            newestHash = nextHash;
+        }
+    }
+
+    return infos[newest].name;
+}
+
+//
+// Search PowerShell subdirectories for newest
+//
+std::string getNewestPowerShellDir(const std::string &parentDir)
+{
+    // assume all subdirectories have the format:  x.x.x-x.x or x.x.x
+    // e.g. 6.0.0-alpha.8, or 10.0.1
+
+    if (parentDir.empty())
+    {
+        return parentDir;
+    }
+
+    DIR *dir = opendir(parentDir.c_str());
+    if (NULL == dir)
+    {
+        return std::string("");
+    }
+
+    std::vector<std::string> subdirs;
+    struct dirent *entry = readdir(dir);
+    while (NULL != entry)
+    {
+        if (DT_DIR == entry->d_type && entry->d_name[0] != '.')
+        {
+            subdirs.push_back(entry->d_name);
+        }
+        entry = readdir(dir);
+    }
+    closedir(dir);
+
+    if (subdirs.empty())
+    {
+        return parentDir;
+    }
+    
+    std::vector<ReleaseInfo> subdirsInfo;
+    bool ret = ParseDirNames(subdirs, subdirsInfo);
+
+    if (!ret)
+    {
+        return parentDir;
+    }
+
+    return parentDir + '/' + getNewestSubDir(subdirsInfo);
+}
+
 //
 // Below is our custom start/stop interface
 //
@@ -192,6 +401,8 @@ int startCoreCLR(
         clrAbsolutePath = std::string("/opt/microsoft/powershell");
 #endif
     }
+
+    clrAbsolutePath = getNewestPowerShellDir(clrAbsolutePath);
 
     // get the CoreCLR shared library path
     std::string coreClrDllPath(clrAbsolutePath);
